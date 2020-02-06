@@ -7,8 +7,11 @@ import(
 type Status int
 const(
 	LEXICALERROR = iota
-	IN_INT_LEX
+	IN_DEC_LEX
 	IN_FRAC_LEX
+	IN_HEX_LEX
+	IN_OCT_LEX
+	IN_BIN_LEX
 )
 
 type Lexer struct{
@@ -108,30 +111,33 @@ func (lexer *Lexer)NextToken()(token Token){
 		case 0:
 			token = newToken(EOF,"")
 		default:
-			if isVisibleChar(lexer.CurrentChar){
-				//deal with number
-				if isNumber(lexer.CurrentChar){
-					numberLiteral,status := lexer.readNumber()
-					if status == LEXICALERROR{
-						token = newToken(ILLEGAL,string(lexer.CurrentChar))
-					}else if status == IN_INT_LEX{
-						token = newToken(INT,numberLiteral)
-					}else if status == IN_FRAC_LEX{
-						token = newToken(FLOAT,numberLiteral)
-					}
-				}else{//deal with identify and key word
-					word := lexer.readWord()
-					tokenType,ok := findKeywords(word)
-					if ok{//is keyword
-						token = newToken(tokenType,word)
-					}else{//is identify
-						token = newToken(IDENT,word)
-					}
+			if isNumber(lexer.CurrentChar){//deal with number
+				numberLiteral,status := lexer.readNumber()
+				if status == IN_DEC_LEX{
+					token = newToken(INT,numberLiteral)
+				}else if status == IN_FRAC_LEX{
+					token = newToken(FLOAT,numberLiteral)
+				}else if status == IN_HEX_LEX{
+					token = newToken(HEX,numberLiteral)
+				}else if status == IN_OCT_LEX{
+					token = newToken(OCT,numberLiteral)
+				}else if status == IN_BIN_LEX{
+					token = newToken(BIN,numberLiteral)
+				}else if status == LEXICALERROR{
+					token = newToken(ILLEGAL,numberLiteral)
+				}
+			}else if isAlpha(lexer.CurrentChar){//deal with identify and key word
+				word := lexer.readWord()
+				tokenType,ok := findKeywords(word)
+				if ok{//is keyword
+					token = newToken(tokenType,word)
+				}else{//is identify
+					token = newToken(IDENT,word)
 				}
 			}else{
 				token = newToken(ILLEGAL,string(lexer.CurrentChar))
 			}
-		}
+	}
 	return
 }
 
@@ -157,13 +163,13 @@ func (lexer * Lexer)eatSpace(){
 
 func (lexer *Lexer)readWord()(word string){
 	word = ""
-	for isAlpha(lexer.CurrentChar){
-			word = word + string(lexer.CurrentChar)
-			if isAlpha(lexer.peepNextChar()){
-				lexer.nextChar()
-			}else{
-				break
-			}
+	for isAlpha(lexer.CurrentChar) || isNumber(lexer.CurrentChar){
+		word = word + string(lexer.CurrentChar)
+		if isAlpha(lexer.peepNextChar()) || isNumber(lexer.peepNextChar()){
+			lexer.nextChar()
+		}else{
+			break
+		}
 	}
 	return
 }
@@ -174,60 +180,114 @@ func (lexer *Lexer)peepNextChar()(nextChar byte){
 
 func (lexer *Lexer)readNumber()(numberLiteral string,status Status){
 	numberLiteral = ""
-	status = IN_INT_LEX
-	if lexer.CurrentChar == '0'{
-		if isAlpha(lexer.peepNextChar()) || isNumber(lexer.peepNextChar()){
-			status = LEXICALERROR
-		}else if lexer.peepNextChar() == '.'{
-			status = IN_FRAC_LEX
+	if lexer.CurrentChar == '0'{//0,0x,0o,0b(integers only)
+		switch lexer.peepNextChar(){
+		case 'b':
+			status = IN_BIN_LEX
+			numberLiteral = "0b"
 			lexer.nextChar()
-			numberLiteral = numberLiteral + "0."
-			numberLiteral = numberLiteral + lexer.readFrac()
-			if isAlpha(lexer.peepNextChar()) || lexer.peepNextChar() == '.'{
-				status = LEXICALERROR
+			lexer.nextChar()
+			for lexer.CurrentChar == '0' || lexer.CurrentChar == '1'{
+				numberLiteral = numberLiteral + string(lexer.CurrentChar)
+				if isNumber(lexer.peepNextChar()){
+					if lexer.peepNextChar() == '0' || lexer.peepNextChar()=='1'{
+						lexer.nextChar()
+					}else{
+						status = LEXICALERROR
+						break
+					}
+				}else if isAlpha(lexer.peepNextChar()){
+					status = LEXICALERROR
+					break
+				}else{
+					break
+				}
 			}
-		}else{
-			numberLiteral = numberLiteral + "0"
-		}
-	}else{
-		numberLiteral = numberLiteral + lexer.readInt()
-		if lexer.peepNextChar() == '.'{
-			status = IN_FRAC_LEX
+		case 'o':
+			status = IN_OCT_LEX
+			numberLiteral = "0o"
 			lexer.nextChar()
-			numberLiteral = numberLiteral + "."
-			numberLiteral = numberLiteral + lexer.readFrac()
-			if isAlpha(lexer.peepNextChar()) || lexer.peepNextChar() == '.'{
-				status = LEXICALERROR
+			lexer.nextChar()
+			for lexer.CurrentChar >= '0' && lexer.CurrentChar <= '7'{
+				numberLiteral = numberLiteral + string(lexer.CurrentChar)
+				if isNumber(lexer.peepNextChar()){
+					if lexer.peepNextChar() >= '0' && lexer.peepNextChar()<='7'{
+						lexer.nextChar()
+					}else{
+						status = LEXICALERROR
+						break
+					}
+				}else if isAlpha(lexer.peepNextChar()){
+					status = LEXICALERROR
+					break
+				}else{
+					break
+				}
 			}
-		}else if isAlpha(lexer.peepNextChar()){
-			status = LEXICALERROR
-		}
-	}
-	return
-}
-
-func (lexer *Lexer)readInt()(intLiteral string){
-	intLiteral = ""
-	for isNumber(lexer.CurrentChar){
-		intLiteral = intLiteral + string(lexer.CurrentChar)
-		if isNumber(lexer.peepNextChar()){
+		case 'x':
+			status = IN_HEX_LEX
+			numberLiteral = "0x"
 			lexer.nextChar()
-		}else{
-			break
-		}
-	}
-	return
-}
-
-func (lexer *Lexer)readFrac()(fracLiteral string){
-	fracLiteral = ""
-	lexer.nextChar()
-	for isNumber(lexer.CurrentChar){
-		fracLiteral = fracLiteral + string(lexer.CurrentChar)
-		if isNumber(lexer.peepNextChar()){
 			lexer.nextChar()
-		}else{
-			break
+			for isNumber(lexer.CurrentChar) || (lexer.CurrentChar >= 'a' || lexer.CurrentChar <= 'f'){
+				numberLiteral = numberLiteral + string(lexer.CurrentChar)
+				if isNumber(lexer.peepNextChar()){
+					lexer.nextChar()
+				}else if isAlpha(lexer.peepNextChar()){
+					if lexer.peepNextChar() >= 'a' && lexer.peepNextChar() <= 'f'{
+						lexer.nextChar()
+					}else{
+						status = LEXICALERROR
+						break
+					}
+				}else{
+					break
+				}
+			}
+		case '.':
+			status = IN_FRAC_LEX
+			numberLiteral = "0."
+			lexer.nextChar()
+			lexer.nextChar()
+			for isNumber(lexer.CurrentChar){
+				numberLiteral = numberLiteral + string(lexer.CurrentChar)
+				if isNumber(lexer.peepNextChar()){
+					lexer.nextChar()
+				}else if isAlpha(lexer.peepNextChar()){
+					status = LEXICALERROR
+					break
+				}else{
+					break
+				}
+			}
+		default:
+			if isAlpha(lexer.peepNextChar()) || isNumber(lexer.peepNextChar()){
+				status = LEXICALERROR
+			}else{
+				numberLiteral = numberLiteral + string(lexer.CurrentChar)
+				status = IN_DEC_LEX
+			}
+		}
+	}else{//decimal integers and float
+		status = IN_DEC_LEX
+		for isNumber(lexer.CurrentChar) || lexer.CurrentChar == '.'{
+			numberLiteral = numberLiteral + string(lexer.CurrentChar)
+			if isNumber(lexer.peepNextChar()){
+				lexer.nextChar()
+			}else if lexer.peepNextChar() == '.'{
+				if status == IN_DEC_LEX{
+					status = IN_FRAC_LEX
+					lexer.nextChar()
+				}else{
+					status = LEXICALERROR
+					break
+				}
+			}else if isAlpha(lexer.peepNextChar()){
+				status = LEXICALERROR
+				break
+			}else{
+				break
+			}
 		}
 	}
 	return
@@ -239,10 +299,7 @@ func newToken(tokenType TokenType,literal string)(token Token){
 	return
 }
 
-func isVisibleChar(currentChar byte)(bool){
-	return currentChar > 32 && currentChar < 127
-}
-
+//a-z,A-Z,_
 func isAlpha(currentChar byte)(bool){
 	return (currentChar >= 65 && currentChar <= 90)||(currentChar >= 97 && currentChar <= 122)||(currentChar == 95)
 }

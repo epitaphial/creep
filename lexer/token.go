@@ -9,6 +9,9 @@ const (
 	//datas
 	INT   = "INT"
 	FLOAT = "FLOAT"
+	BIN = "BIN"
+	OCT = "OCT"
+	HEX = "HEX"
 
 	//Single Operators
 	ASSIGN      = "="
@@ -64,6 +67,9 @@ var keywords = map[string]TokenType{
 	"order": ORDER,
 	"return":RETURN,
 	"int":INT,
+	"bin":BIN,
+	"oct":OCT,
+	"hex":HEX,
 	"float":FLOAT,
 	"if":IF,
 	"else":ELSE,
